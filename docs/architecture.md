@@ -18,5 +18,11 @@ This document provides a detailed explanation of the architecture, design decisi
 - EC2 only accessible from ALB SG
 - SSM option explained (if available)
 
+## External Lab/Integration Connections
+- Any external endpoints, tokens, or lab-specific variables must be declared in a `.env` file (see `.env.example`).
+- Never commit real credentials or secrets to the repository.
+- Scripts and code should load variables from `.env` using standard tools (e.g., `source .env` in bash).
+- Document all required variables in `.env.example` and README.md.
+
 ## Diagrams
 - (Insert Mermaid or ASCII diagram here)

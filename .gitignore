@@ -1,0 +1,20 @@
+# Python cache and environment
+__pycache__/
+.env
+.env.*
+*.pem
+*.log
+*.out
+*.bak
+*.swp
+.aws/
+.terraform/
+*.tfstate*
+*.zip
+*.tar.gz
+outputs/
+# Ignore evidence screenshots (except in docs/screenshots)
+!/docs/screenshots/
+# Lab credentials and config
+lab-credentials.json
+lab-config.yaml

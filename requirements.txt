@@ -1,0 +1,5 @@
+# Requirements for deploying and validating the HA Web Platform
+awscli>=2.0.0
+cfn-lint
+jq
+# Add any extra tools needed for lab integration or evidence collection below

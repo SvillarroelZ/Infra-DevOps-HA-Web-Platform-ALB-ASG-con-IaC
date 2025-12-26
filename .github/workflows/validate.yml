@@ -1,0 +1,26 @@
+name: Validate CloudFormation and Scripts
+
+on:
+  push:
+    branches: [ main, feat/*, docs/*, chore/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      - name: Install dependencies
+        run: |
+          pip install cfn-lint
+          sudo apt-get update && sudo apt-get install -y jq shellcheck
+      - name: Lint CloudFormation
+        run: cfn-lint iac/main.yaml
+      - name: Lint Bash scripts
+        run: |
+          shellcheck scripts/*.sh
