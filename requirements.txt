@@ -1,5 +1,4 @@
-# Requirements for deploying and validating the HA Web Platform
-awscli>=2.0.0
-cfn-lint
-jq
-# Add any extra tools needed for lab integration or evidence collection below
+cfn-lint>=0.77.0
+
+# Python requirements for deploying and validating the HA Web Platform
+cfn-lint>=0.77.0

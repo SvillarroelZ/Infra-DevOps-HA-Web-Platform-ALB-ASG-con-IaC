@@ -1,6 +1,4 @@
-echo -e "${CYAN}[INFO] Collecting stack outputs for '$STACK_NAME'...${RESET}"
-echo -e "${CYAN}[INFO] Collecting stack resources for '$STACK_NAME'...${RESET}"
-echo -e "${GREEN}[SUCCESS] Evidence collected in directory: $EVIDENCE_DIR${RESET}"
+echo -e "${CYAN}[INFO] Stack resources:${RESET}"
 echo -e "${CYAN}If you want to run AWS CLI commands manually, first export your environment with:${RESET}"
 echo -e "${BOLD}  set -a; . ./.env.aws-lab; set +a${RESET}"
 echo -e "${CYAN}For normal use, just run the provided scripts. Manual export is only needed for advanced troubleshooting or custom AWS CLI commands.${RESET}"
@@ -8,9 +6,9 @@ echo -e "${CYAN}For normal use, just run the provided scripts. Manual export is 
 
 
 #!/bin/bash
-# evidence.sh - Evidence collection script for the HA Web Platform (CloudFormation)
+# verify.sh - Verification script for the HA Web Platform (CloudFormation)
 #
-# Abstract: This script collects all relevant evidence and outputs for audit and compliance. All comments are in English, concise, and line-based, explaining what and why each block exists.
+# Abstract: This script verifies the deployment and status of all resources in the HA Web Platform. All comments are in English, concise, and line-based, explaining what and why each block exists.
 
 
 # Seguridad y robustez: fail fast
@@ -57,42 +55,37 @@ export STACK_NAME # Export stack name for use by child processes
 # Technology: Verifica existencia antes de operar
 EXISTING_STACKS=$(aws cloudformation describe-stacks --query 'Stacks[*].StackName' --output text 2>/dev/null || true) # List all stack names
 if ! echo "$EXISTING_STACKS" | grep -qw "$STACK_NAME"; then
-  echo -e "${RED}[ERROR] Stack '$STACK_NAME' does not exist in this region. Nothing to collect.${RESET}" # Error if stack does not exist
+  echo -e "${RED}[ERROR] Stack '$STACK_NAME' does not exist in this region. Nothing to verify.${RESET}" # Error if stack does not exist
   exit 1
 fi
 
-# Technology: Evidencia organizada y automatizada
-EVIDENCE_DIR="evidence" # Directory to store evidence
-mkdir -p "$EVIDENCE_DIR" # Create directory
+# Cloud Concepts & Technology: Estado del stack para troubleshooting
+STACK_STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND") # Get stack status
+echo -e "${CYAN}[INFO] Stack '$STACK_NAME' status: ${BOLD}$STACK_STATUS${RESET}" # Show stack status
 
-# Cloud Concepts & Technology: Evidencia de eventos para troubleshooting
-echo -e "${CYAN}[INFO] Collecting stack events for '$STACK_NAME'...${RESET}" # Notify user
-aws cloudformation describe-stack-events --stack-name "$STACK_NAME" --max-items 50 --output table --no-cli-pager > "$EVIDENCE_DIR/stack-events.txt" || echo -e "${YELLOW}[WARN] Could not collect stack events.${RESET}" # Save events
 
 # Outputs para integración, troubleshooting y evidencia
-echo -e "${CYAN}[INFO] Collecting stack outputs for '$STACK_NAME'...${RESET}" # Notify user
-aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs' --output table --no-cli-pager > "$EVIDENCE_DIR/stack-outputs.txt" || echo -e "${YELLOW}[WARN] Could not collect stack outputs.${RESET}" # Save outputs
-
+echo -e "${CYAN}[INFO] Stack outputs:${RESET}"
+aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs' --output table --no-cli-pager || echo -e "${YELLOW}[WARN] No outputs found.${RESET}"
 
 # Outputs para evidencia y auditoría
-echo -e "${CYAN}[INFO] Collecting stack resources for '$STACK_NAME'...${RESET}"
-aws cloudformation describe-stack-resources --stack-name "$STACK_NAME" --output table --no-cli-pager > "$EVIDENCE_DIR/stack-resources.txt" || echo -e "${YELLOW}[WARN] Could not collect stack resources.${RESET}"
+echo -e "${CYAN}[INFO] Stack resources:${RESET}"
+aws cloudformation describe-stack-resources --stack-name "$STACK_NAME" --output table --no-cli-pager || echo -e "${YELLOW}[WARN] No resources found.${RESET}"
 
 # Security & Compliance: Evidencia de base de datos y persistencia
 DDB_TABLE_NAME=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='HaWebDynamoDbTableName'].OutputValue" --output text)
 if [ -n "$DDB_TABLE_NAME" ]; then
-  echo -e "${CYAN}[INFO] Collecting DynamoDB table evidence: $DDB_TABLE_NAME${RESET}"
-  aws dynamodb describe-table --table-name "$DDB_TABLE_NAME" --output table --no-cli-pager > "$EVIDENCE_DIR/dynamodb-table.txt" || echo -e "${YELLOW}[WARN] Could not collect DynamoDB table evidence.${RESET}"
+  echo -e "${CYAN}[INFO] Checking DynamoDB table: $DDB_TABLE_NAME${RESET}"
+  aws dynamodb describe-table --table-name "$DDB_TABLE_NAME" --output table --no-cli-pager || echo -e "${YELLOW}[WARN] DynamoDB table not found or not yet available.${RESET}"
 else
-  echo -e "${YELLOW}[WARN] DynamoDB table output not found in stack outputs. No DynamoDB evidence collected.${RESET}"
+  echo -e "${YELLOW}[WARN] DynamoDB table output not found in stack outputs.${RESET}"
 fi
-
-# Evidence & Audit: Mensaje de éxito
-echo -e "${GREEN}[SUCCESS] Evidence collected in directory: $EVIDENCE_DIR${RESET}" # Success
 
 # Technology: Recordatorio para troubleshooting avanzado
 # Billing & Pricing: Advertencia de costos
 echo -e "${YELLOW}[COST CONTROL] Recuerda destruir la infraestructura tras las pruebas para evitar cargos innecesarios. Usa ./scripts/destroy.sh para limpieza total.${RESET}"
+# Evidence & Audit: Mensaje de evidencia
+echo -e "${CYAN}[EVIDENCE] Todos los outputs y recursos pueden ser recolectados automáticamente para auditoría y portafolio usando ./scripts/evidence.sh${RESET}"
 echo -e "${CYAN}If you want to run AWS CLI commands manually, first export your environment with:${RESET}" # Reminder
 echo -e "${BOLD}  set -a; . ./.env.aws-lab; set +a${RESET}" # Show export command
 echo -e "${CYAN}For normal use, just run the provided scripts. Manual export is only needed for advanced troubleshooting or custom AWS CLI commands.${RESET}" # Usage note

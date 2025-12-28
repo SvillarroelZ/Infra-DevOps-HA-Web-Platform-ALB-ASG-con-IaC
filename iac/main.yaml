@@ -1,16 +1,38 @@
+
+
+
+################################################################################
+# main.yaml - CloudFormation template for the HA Web Platform
+#
+# Abstract: This template provisions a highly available, secure, and auditable web platform on AWS. It is modular, cost-controlled, and designed for professional portfolio and certification demonstration. All comments are in English, concise, and line-based, explaining what and why each block exists.
+################################################################################
+
+# CloudFormation template version declaration
 AWSTemplateFormatVersion: '2010-09-09'
+
+# Description of the stack for documentation and AWS Console
 Description: >
   HA Web Platform - VPC, ALB, ASG, EC2, CloudWatch (minimal, secure, reproducible)
-  # This template provisions a highly available web platform across two AZs with
-  # Application Load Balancer, Auto Scaling Group, and CloudWatch alarm.
-  # All resources are for lab/testing purposes only and should be destroyed after use.
-  # Security: No SSH open to the world. Only HTTP via ALB. EC2 only accessible from ALB SG.
 
+
+
+################################################################################
+################################################################################
+# PARAMETERS: All configurable values for customization and cost control. Only safe, free tier, and lab-appropriate values are allowed.
+################################################################################
 Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
+    Description: Environment name (used for resource naming and tags)
   VpcCidr:
     Type: String
     Default: 10.0.0.0/16
-    Description: CIDR block for the VPC
+    Description: CIDR block for the VPC (keep small for lab, avoid overlapping with other VPCs)
   PublicSubnet1Cidr:
     Type: String
     Default: 10.0.1.0/24
@@ -25,104 +47,126 @@ Parameters:
     AllowedValues:
       - t2.micro
       - t3.micro
-      - t3.small
-    Description: EC2 instance type for ASG (use free tier for lab)
+    Description: EC2 instance type for ASG (use t2.micro/t3.micro for free tier; enforced by scripts)
+  DesiredCapacity:
+    Type: Number
+    Default: 2
+    Description: Desired number of EC2 instances in the ASG
   MinSize:
     Type: Number
     Default: 2
-    Description: Minimum number of EC2 instances in ASG
+    Description: Minimum number of EC2 instances in the ASG
   MaxSize:
     Type: Number
     Default: 2
-    Description: Maximum number of EC2 instances in ASG
-  AmiId:
+    Description: Maximum number of EC2 instances in the ASG
+  ImageId:
     Type: AWS::EC2::Image::Id
-    Description: AMI ID for EC2 instances (default: latest Amazon Linux 2)
     Default: ami-0c02fb55956c7d316
+    Description: EC2 AMI ID to use for instances (Amazon Linux 2, valid for selected region, compatible with free tier)
   AlbHealthCheckPath:
     Type: String
     Default: /
     Description: Health check path for ALB
 
+
+
+################################################################################
+################################################################################
+# RESOURCES: All AWS resources created by this stack. Logical separation: Network, Compute, Persistence. Naming and tagging for traceability.
+################################################################################
 Resources:
+
+  # VPC for network isolation and cost control
   HaWebVpc:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !Ref VpcCidr
-      EnableDnsSupport: true
-      EnableDnsHostnames: true
+      CidrBlock: !Ref VpcCidr # VPC CIDR from parameter
+      EnableDnsSupport: true # Enable DNS for internal resolution
+      EnableDnsHostnames: true # Enable DNS hostnames for EC2
       Tags:
         - Key: Name
-          Value: HaWebVpc
+          Value: !Sub "${Environment}-vpc"
+        - Key: Project
+          Value: ha-web-platform
+        - Key: Environment
+          Value: !Ref Environment
 
-  HaWebPublicSubnet1:
+  # Public Subnet 1 in the first Availability Zone
+  HaWebPublicSubnet1: # First public subnet in AZ1
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref HaWebVpc
-      CidrBlock: !Ref PublicSubnet1Cidr
-      AvailabilityZone: !Select [0, !GetAZs '']
-      MapPublicIpOnLaunch: true
+      # Public subnet in AZ1 for high availability. Public IPs for ALB/EC2.
+      VpcId: !Ref HaWebVpc # Attach to main VPC
+      CidrBlock: !Ref PublicSubnet1Cidr # Use parameter for subnet CIDR
+      AvailabilityZone: !Select [0, !GetAZs ''] # First AZ in region
+      MapPublicIpOnLaunch: true # Assign public IPs
       Tags:
         - Key: Name
-          Value: HaWebPublicSubnet1
+          Value: HaWeb-Subnet-Public-AZ1 # Tag for identification
 
-  HaWebPublicSubnet2:
+  # Public Subnet 2 in the second Availability Zone
+  HaWebPublicSubnet2: # Second public subnet in AZ2
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref HaWebVpc
-      CidrBlock: !Ref PublicSubnet2Cidr
-      AvailabilityZone: !Select [1, !GetAZs '']
-      MapPublicIpOnLaunch: true
+      # Public subnet in AZ2 for high availability. Public IPs for ALB/EC2.
+      VpcId: !Ref HaWebVpc # Attach to main VPC
+      CidrBlock: !Ref PublicSubnet2Cidr # Use parameter for subnet CIDR
+      AvailabilityZone: !Select [1, !GetAZs ''] # Second AZ in region
+      MapPublicIpOnLaunch: true # Assign public IPs
       Tags:
         - Key: Name
-          Value: HaWebPublicSubnet2
+          Value: HaWeb-Subnet-Public-AZ2 # Tag for identification
 
-  HaWebInternetGateway:
+  # Internet Gateway for outbound internet access
+  HaWebInternetGateway: # Internet Gateway for outbound internet access
     Type: AWS::EC2::InternetGateway
     Properties:
+      # Required for outbound internet access (for ALB/EC2 yum updates, etc.)
       Tags:
         - Key: Name
-          Value: HaWebInternetGateway
+          Value: HaWeb-InternetGateway # Tag for identification
 
-  HaWebVpcGatewayAttachment:
+  HaWebVpcGatewayAttachment: # Attach Internet Gateway to VPC
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      VpcId: !Ref HaWebVpc
-      InternetGatewayId: !Ref HaWebInternetGateway
+      VpcId: !Ref HaWebVpc # Attach to main VPC
+      InternetGatewayId: !Ref HaWebInternetGateway # Attach the created IGW
 
-  HaWebPublicRouteTable:
+  HaWebPublicRouteTable: # Route table for public subnets
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref HaWebVpc
+      VpcId: !Ref HaWebVpc # Attach to main VPC
       Tags:
         - Key: Name
-          Value: HaWebPublicRouteTable
+          Value: HaWeb-RouteTable-Public # Tag for identification
 
-  HaWebPublicRoute:
+  HaWebPublicRoute: # Default route for public subnets
     Type: AWS::EC2::Route
-    DependsOn: HaWebVpcGatewayAttachment
+    DependsOn: HaWebVpcGatewayAttachment # Ensure IGW is attached first
     Properties:
-      RouteTableId: !Ref HaWebPublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref HaWebInternetGateway
+      RouteTableId: !Ref HaWebPublicRouteTable # Use public route table
+      DestinationCidrBlock: 0.0.0.0/0 # Default route to internet
+      GatewayId: !Ref HaWebInternetGateway # Use IGW as gateway
 
-  HaWebSubnet1RouteTableAssociation:
+  HaWebSubnet1RouteTableAssociation: # Associate subnet 1 with public route table
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref HaWebPublicSubnet1
-      RouteTableId: !Ref HaWebPublicRouteTable
+      SubnetId: !Ref HaWebPublicSubnet1 # Subnet 1
+      RouteTableId: !Ref HaWebPublicRouteTable # Public route table
 
-  HaWebSubnet2RouteTableAssociation:
+  HaWebSubnet2RouteTableAssociation: # Associate subnet 2 with public route table
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref HaWebPublicSubnet2
-      RouteTableId: !Ref HaWebPublicRouteTable
+      SubnetId: !Ref HaWebPublicSubnet2 # Subnet 2
+      RouteTableId: !Ref HaWebPublicRouteTable # Public route table
 
-  HaWebAlbSecurityGroup:
+  HaWebAlbSecurityGroup: # Security group for ALB
     Type: AWS::EC2::SecurityGroup
     Properties:
+      # ALB SG: Only allows HTTP (port 80) from anywhere. No SSH, no RDP, no admin ports.
       GroupDescription: Allow HTTP from anywhere (only for ALB)
-      VpcId: !Ref HaWebVpc
+      VpcId: !Ref HaWebVpc # Attach to main VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -130,99 +174,132 @@ Resources:
           CidrIp: 0.0.0.0/0  # HTTP only, no SSH, safe for public web access
       SecurityGroupEgress:
         - IpProtocol: -1
-          FromPort: 0
-          ToPort: 0
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: HaWebAlbSecurityGroup
+          Value: HaWeb-SG-ALB # Tag for identification
 
-  HaWebEc2SecurityGroup:
+  HaWebEc2SecurityGroup: # Security group for EC2 instances
+
+# ------------------- Compute Layer -------------------
     Type: AWS::EC2::SecurityGroup
     Properties:
+      # EC2 SG: Only allows HTTP from ALB SG. No public access, no SSH, no RDP.
       GroupDescription: Allow HTTP only from ALB SG (no public access)
-      VpcId: !Ref HaWebVpc
+      VpcId: !Ref HaWebVpc # Attach to main VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          SourceSecurityGroupId: !Ref HaWebAlbSecurityGroup
+          SourceSecurityGroupId: !Ref HaWebAlbSecurityGroup # Only allow from ALB SG
       SecurityGroupEgress:
         - IpProtocol: -1
-          FromPort: 0
-          ToPort: 0
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: HaWebEc2SecurityGroup
+          Value: HaWeb-SG-EC2 # Tag for identification
 
-  HaWebApplicationLoadBalancer:
+  HaWebApplicationLoadBalancer: # Application Load Balancer (ALB)
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: HaWebApplicationLoadBalancer
-      Scheme: internet-facing
+      # ALB: Public, internet-facing, for HTTP only. No HTTPS for simplicity/cost.
+      Name: HaWeb-ALB # Name for ALB
+      Scheme: internet-facing # Public ALB
       Subnets:
-        - !Ref HaWebPublicSubnet1
+        - !Ref HaWebPublicSubnet1 # Attach to both public subnets
         - !Ref HaWebPublicSubnet2
       SecurityGroups:
-        - !Ref HaWebAlbSecurityGroup
-      Type: application
-      IpAddressType: ipv4
+        - !Ref HaWebAlbSecurityGroup # Use ALB SG
+      Type: application # Application load balancer
+      IpAddressType: ipv4 # IPv4 only
       Tags:
         - Key: Name
-          Value: HaWebApplicationLoadBalancer
+          Value: HaWeb-ALB # Tag for identification
 
-  HaWebTargetGroup:
+  HaWebTargetGroup: # Target group for ALB
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: HaWebTargetGroup
-      Port: 80
-      Protocol: HTTP
-      VpcId: !Ref HaWebVpc
-      HealthCheckPath: !Ref AlbHealthCheckPath
-      TargetType: instance
+      Name: HaWeb-TargetGroup # Name for target group
+      Port: 80 # HTTP port
+      Protocol: HTTP # HTTP protocol
+      VpcId: !Ref HaWebVpc # Attach to main VPC
+      HealthCheckPath: !Ref AlbHealthCheckPath # Use parameter for health check
+      TargetType: instance # Register EC2 instances
       Matcher:
-        HttpCode: 200
+        HttpCode: 200 # Expect HTTP 200 for health
       Tags:
         - Key: Name
-          Value: HaWebTargetGroup
+          Value: HaWeb-TargetGroup # Tag for identification
 
-  HaWebAlbListener:
+  HaWebAlbListener: # Listener for ALB
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref HaWebApplicationLoadBalancer
-      Port: 80
-      Protocol: HTTP
+      LoadBalancerArn: !Ref HaWebApplicationLoadBalancer # Attach to ALB
+      Port: 80 # Listen on HTTP port
+      Protocol: HTTP # HTTP protocol
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref HaWebTargetGroup
+          TargetGroupArn: !Ref HaWebTargetGroup # Forward to target group
 
-  HaWebLaunchTemplate:
+  HaWebLaunchTemplate: # Launch template for EC2 instances
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: HaWebLaunchTemplate
+      # Launch template: Only safe, free-tier compatible AMI and instance type. No SSH keys, no EBS costs.
+      LaunchTemplateName: HaWeb-LaunchTemplate # Name for launch template
       LaunchTemplateData:
-        ImageId: !Ref AmiId
-        InstanceType: !Ref InstanceType
+        ImageId: !Ref ImageId # Use parameter for AMI
+        InstanceType: !Ref InstanceType # Use parameter for instance type
         SecurityGroupIds:
-          - !Ref HaWebEc2SecurityGroup
+          - !Ref HaWebEc2SecurityGroup # Attach EC2 SG
         UserData:
-          Fn::Base64: !Sub |
+          Fn::Base64: |
             #!/bin/bash
-            # Simple web server for lab/demo: returns instance ID and AZ for ALB health check and demo
-            # Uses AWS metadata IP 169.254.169.254 (safe, not a public or personal IP)
-            echo "<h1>Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)</h1><h2>AZ: $(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)</h2>" > /var/www/html/index.html
-            yum install -y httpd
-            systemctl enable httpd
-            systemctl start httpd
-            cp /var/www/html/index.html /var/www/html/health.html
+            # Minimal web server for demo: returns instance ID, AZ, hostname, and environment info with styled HTML
+            yum install -y httpd # Install Apache
+            systemctl enable httpd # Enable Apache at boot
+            systemctl start httpd # Start Apache
+            INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id) # Get instance ID
+            AZ=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone) # Get AZ
+            HOSTNAME=$(hostname) # Get hostname
+            ENVIRONMENT="${Environment:-dev}"
+            cat <<EOF > /var/www/html/index.html
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>HA Web Platform Instance</title>
+              <style>
+                body { font-family: Arial, sans-serif; background: #f4f6fa; color: #222; margin: 0; padding: 0; }
+                .container { max-width: 600px; margin: 60px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px #0001; padding: 32px; }
+                h1 { color: #2a5d9f; }
+                .info { margin: 24px 0; font-size: 1.1em; }
+                .footer { color: #888; font-size: 0.9em; margin-top: 32px; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <h1>HA Web Platform Instance</h1>
+                <div class="info">
+                  <strong>Instance ID:</strong> $INSTANCE_ID<br>
+                  <strong>Availability Zone:</strong> $AZ<br>
+                  <strong>Hostname:</strong> $HOSTNAME<br>
+                  <strong>Environment:</strong> $ENVIRONMENT
+                </div>
+                <p>This instance is part of a highly available, auto-scaled web platform deployed via AWS CloudFormation.</p>
+                <div class="footer">&copy; 2025 HA Web Platform Demo</div>
+              </div>
+            </body>
+            </html>
+            EOF
+            cp /var/www/html/index.html /var/www/html/health.html # Copy for health check
         TagSpecifications:
           - ResourceType: instance
             Tags:
               - Key: Name
-                Value: HaWebEc2Instance
+                Value: !Sub 'HaWeb-Instance-${AWS::Region}-${AWS::StackName}-${AWS::StackId}' # Tag for identification
 
-  HaWebAutoScalingGroup:
+  HaWebAutoScalingGroup: # Auto Scaling Group for EC2 instances
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       VPCZoneIdentifier:
@@ -233,43 +310,78 @@ Resources:
         Version: !GetAtt HaWebLaunchTemplate.LatestVersionNumber
       MinSize: !Ref MinSize
       MaxSize: !Ref MaxSize
+      DesiredCapacity: !Ref DesiredCapacity
       TargetGroupARNs:
         - !Ref HaWebTargetGroup
       HealthCheckType: EC2
       HealthCheckGracePeriod: 60
       Tags:
         - Key: Name
-          Value: HaWebAutoScalingGroup
+          Value: !Sub 'HaWeb-ASG-${Environment}'
           PropagateAtLaunch: true
 
-  HaWebCpuAlarmHigh:
+  HaWebCpuAlarmHigh: # CloudWatch Alarm for high CPU
+
+# ------------------- Persistence Layer -------------------
+  HaWebDynamoDbTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${Environment}-haweb-table'
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-haweb-table'
+        - Key: Environment
+          Value: !Ref Environment
     Type: AWS::CloudWatch::Alarm
     Properties:
+      # CloudWatch Alarm: Demo only, no scaling policy attached (cost control, safe for lab)
       AlarmDescription: 'Alarm if average CPU > 70% for 5 minutes (scaling demo)'
-      Namespace: AWS/EC2
-      MetricName: CPUUtilization
+      Namespace: AWS/EC2 # Namespace for EC2 metrics
+      MetricName: CPUUtilization # Metric to monitor
       Dimensions:
         - Name: AutoScalingGroupName
-          Value: !Ref HaWebAutoScalingGroup
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 70
-      ComparisonOperator: GreaterThanThreshold
+          Value: !Ref HaWebAutoScalingGroup # Monitor this ASG
+      Statistic: Average # Use average CPU
+      Period: 300 # 5 minutes
+      EvaluationPeriods: 1 # One period
+      Threshold: 70 # 70% CPU
+      ComparisonOperator: GreaterThanThreshold # Trigger if above threshold
       AlarmActions: [] # No scaling policy attached, just for demo/visibility
       OKActions: []
       InsufficientDataActions: []
 
+
+
+################################################################################
+# OUTPUTS: Key values for evidence, documentation, and verification.
+################################################################################
+
 Outputs:
   HaWebAlbDnsName:
-    Description: DNS name of the Application Load Balancer
+    Description: DNS name of the Application Load Balancer (use for HTTP test)
     Value: !GetAtt HaWebApplicationLoadBalancer.DNSName
   HaWebVpcId:
-    Description: VPC ID
+    Description: VPC ID (for evidence and troubleshooting)
     Value: !Ref HaWebVpc
   HaWebPublicSubnet1Id:
-    Description: Public Subnet 1 ID
+    Description: Public Subnet 1 ID (for evidence)
     Value: !Ref HaWebPublicSubnet1
   HaWebPublicSubnet2Id:
-    Description: Public Subnet 2 ID
+    Description: Public Subnet 2 ID (for evidence)
     Value: !Ref HaWebPublicSubnet2
+  HaWebAutoScalingGroupName:
+    Description: Name of the Auto Scaling Group
+    Value: !Ref HaWebAutoScalingGroup
+  HaWebDynamoDbTableName:
+    Description: Name of the DynamoDB table
+    Value: !Ref HaWebDynamoDbTable
+  HaWebDynamoDbTableArn:
+    Description: ARN of the DynamoDB table
+    Value: !GetAtt HaWebDynamoDbTable.Arn

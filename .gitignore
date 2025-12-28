@@ -1,20 +1,20 @@
-# Python cache and environment
+
+# AWS credentials and environment
+.env*
+
+# Python cache
 __pycache__/
-.env
-.env.*
-*.pem
-*.log
-*.out
-*.bak
-*.swp
-.aws/
-.terraform/
-*.tfstate*
-*.zip
-*.tar.gz
+*.pyc
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Output and evidence
 outputs/
-# Ignore evidence screenshots (except in docs/screenshots)
-!/docs/screenshots/
-# Lab credentials and config
-lab-credentials.json
-lab-config.yaml
+evidence/
+
+# Misc
+*.swp
+*.swo
