@@ -1,20 +1,24 @@
+# Credentials and local environment
+.env.aws-lab
+env.aws-lab
 
-# AWS credentials and environment
-.env*
+# Logs and evidence
+logs/
+*.log
 
-# Python cache
+# Terraform state and variables
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+.terraform.lock.hcl
+
+# Python caches
 __pycache__/
 *.pyc
 
-# Editor and OS files
+# Editor and OS
 .DS_Store
-Thumbs.db
 .vscode/
-
-# Output and evidence
-outputs/
-evidence/
-
-# Misc
-*.swp
-*.swo

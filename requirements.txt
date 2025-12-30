@@ -1,4 +1,9 @@
-cfn-lint>=0.77.0
+# requirements.txt
+# Python dependencies for local development and optional Flask app
+# Note: The CloudFormation/Terraform deployment uses Apache with static HTML
+#       These packages are only needed if running app/haweb_app.py locally
 
-# Python requirements for deploying and validating the HA Web Platform
-cfn-lint>=0.77.0
+flask>=3.0.0
+boto3>=1.28.0
+python-dotenv>=1.0.0
+<
