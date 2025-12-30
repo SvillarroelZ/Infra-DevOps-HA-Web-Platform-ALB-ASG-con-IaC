@@ -3,6 +3,7 @@
 [![AWS](https://img.shields.io/badge/AWS-CloudFormation-orange)](https://aws.amazon.com/cloudformation/)
 [![Terraform](https://img.shields.io/badge/IaC-Terraform-purple)](https://www.terraform.io/)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+[![Español](https://img.shields.io/badge/Idioma-Español-red)](README_ES.md)
 
 **Production-Ready Infrastructure as Code for Learning and Portfolio Demonstration**
 
